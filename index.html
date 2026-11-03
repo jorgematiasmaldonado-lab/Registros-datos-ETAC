@@ -110,6 +110,11 @@
     .campo::placeholder { color: var(--mut); opacity: .7; }
     .campo:focus { border-color: var(--acc); box-shadow: 0 0 0 4px rgba(77,176,255,.22); }
     .mayus { text-transform: uppercase; }
+    /* Campo de tensión arterial con botón "/" (el teclado numérico del celular no trae la barra) */
+    .ta-fila { display: flex; gap: 8px; }
+    .ta-fila .campo { min-width: 0; flex: 1; }
+    .barra-ta { flex: none; width: 56px; min-height: 56px; border: 0; border-radius: 14px; background: var(--acc); color: var(--accfg); font: inherit; font-size: 1.7rem; font-weight: 800; cursor: pointer; }
+    .barra-ta:active { transform: scale(.95); }
 
     .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--field); border: 2px solid var(--line); border-radius: 16px; padding: 4px; }
     .seg label { position: relative; cursor: pointer; }
@@ -293,7 +298,11 @@
         <fieldset>
           <legend class="et">Signos vitales</legend>
           <div class="g2">
-            <div><label class="sub" for="ta">TA (mmHg)</label><input id="ta" type="text" inputmode="numeric" maxlength="7" class="campo" placeholder="120/80"></div>
+            <div><label class="sub" for="ta">TA (mmHg)</label>
+              <div class="ta-fila">
+                <input id="ta" type="text" inputmode="text" maxlength="7" class="campo" placeholder="120/80" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
+                <button id="btnBarra" type="button" class="barra-ta" aria-label="Insertar barra inclinada">/</button>
+              </div></div>
             <div><label class="sub" for="fc">FC (lpm)</label><input id="fc" type="number" inputmode="numeric" min="0" max="300" class="campo" placeholder="80"></div>
             <div><label class="sub" for="fr">FR (rpm)</label><input id="fr" type="number" inputmode="numeric" min="0" max="80" class="campo" placeholder="16"></div>
             <div><label class="sub" for="sato2">SatO2 (%)</label><input id="sato2" type="number" inputmode="numeric" min="0" max="100" class="campo" placeholder="98"></div>
@@ -537,6 +546,24 @@
   }
   ['efectivo', 'base', 'guardia', 'cuadrante'].forEach((id) => { $(id).addEventListener('input', guardarFijos); $(id).addEventListener('change', guardarFijos); });
   const fijos = () => leer(KEY_FIJOS, {});
+
+  // ---------- Tensión arterial: solo números y una barra "/" (botón para insertarla) ----------
+  $('ta').addEventListener('input', function () {
+    let v = this.value.replace(/[^0-9\/]/g, '');
+    const i = v.indexOf('/');
+    if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\//g, '');
+    if (v !== this.value) this.value = v;
+  });
+  $('btnBarra').addEventListener('click', function () {
+    const el = $('ta');
+    if (el.value.indexOf('/') === -1) {
+      const a = el.selectionStart == null ? el.value.length : el.selectionStart;
+      const b = el.selectionEnd == null ? a : el.selectionEnd;
+      el.value = (el.value.slice(0, a) + '/' + el.value.slice(b)).slice(0, 7);
+    }
+    el.focus();
+    try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+  });
 
   // ---------- Traslado: muestra/oculta el campo de destino ----------
   function actualizarTraslado() {
