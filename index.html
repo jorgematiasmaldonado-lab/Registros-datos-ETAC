@@ -110,11 +110,8 @@
     .campo::placeholder { color: var(--mut); opacity: .7; }
     .campo:focus { border-color: var(--acc); box-shadow: 0 0 0 4px rgba(77,176,255,.22); }
     .mayus { text-transform: uppercase; }
-    /* Campo de tensión arterial con botón "/" (el teclado numérico del celular no trae la barra) */
-    .ta-fila { display: flex; gap: 8px; }
-    .ta-fila .campo { min-width: 0; flex: 1; }
-    .barra-ta { flex: none; width: 56px; min-height: 56px; border: 0; border-radius: 14px; background: var(--acc); color: var(--accfg); font: inherit; font-size: 1.7rem; font-weight: 800; cursor: pointer; }
-    .barra-ta:active { transform: scale(.95); }
+    .seg.seg3 { grid-template-columns: repeat(3, 1fr); }
+    .envio { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
 
     .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--field); border: 2px solid var(--line); border-radius: 16px; padding: 4px; }
     .seg label { position: relative; cursor: pointer; }
@@ -246,7 +243,7 @@
         <p class="nota">Quedan fijos para cargar pacientes seguidos.</p>
 
         <div>
-          <label class="et" for="efectivo">Apellido y nombre del efectivo</label>
+          <label class="et" for="efectivo">Apellido y nombre del efectivo *</label>
           <input id="efectivo" type="text" class="campo mayus" maxlength="60" placeholder="MALDONADO JORGE MATIAS"
                  autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
         </div>
@@ -296,16 +293,10 @@
         </div>
 
         <fieldset>
-          <legend class="et">Signos vitales</legend>
-          <div class="g2">
-            <div><label class="sub" for="ta">TA (mmHg)</label>
-              <div class="ta-fila">
-                <input id="ta" type="text" inputmode="text" maxlength="7" class="campo" placeholder="120/80" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
-                <button id="btnBarra" type="button" class="barra-ta" aria-label="Insertar barra inclinada">/</button>
-              </div></div>
-            <div><label class="sub" for="fc">FC (lpm)</label><input id="fc" type="number" inputmode="numeric" min="0" max="300" class="campo" placeholder="80"></div>
-            <div><label class="sub" for="fr">FR (rpm)</label><input id="fr" type="number" inputmode="numeric" min="0" max="80" class="campo" placeholder="16"></div>
-            <div><label class="sub" for="sato2">SatO2 (%)</label><input id="sato2" type="number" inputmode="numeric" min="0" max="100" class="campo" placeholder="98"></div>
+          <legend class="et">Sexo *</legend>
+          <div class="seg" role="radiogroup" aria-label="Sexo del paciente">
+            <label><input type="radio" name="sexo" value="Masculino"><span>Masculino</span></label>
+            <label><input type="radio" name="sexo" value="Femenino"><span>Femenino</span></label>
           </div>
         </fieldset>
 
@@ -343,7 +334,7 @@
 
     <!-- ============ INFORMES ============ -->
     <section class="tarjeta">
-      <h2>Informes</h2>
+      <h2>Informes y envío</h2>
       <div class="seg" role="radiogroup" aria-label="Tipo de informe">
         <label><input type="radio" name="tipoInforme" value="periodo" checked><span>Por período</span></label>
         <label><input type="radio" name="tipoInforme" value="final"><span>Informe final</span></label>
@@ -377,7 +368,20 @@
       </div>
 
       <button id="btnVista" type="button" class="btn btn-p">Ver informe</button>
-      <p class="nota" style="margin:0">Primero se muestra cómo queda; desde ahí lo descargás en PDF o lo compartís por WhatsApp o email.</p>
+      <p class="nota" style="margin:0">Primero se muestra cómo queda; desde ahí lo descargás en PDF.</p>
+
+      <div class="envio">
+        <fieldset>
+          <legend class="et">Enviar por WhatsApp</legend>
+          <div class="seg seg3" role="radiogroup" aria-label="Formato del archivo">
+            <label><input type="radio" name="formatoEnvio" value="pdf" checked><span>PDF</span></label>
+            <label><input type="radio" name="formatoEnvio" value="xlsx"><span>Excel</span></label>
+            <label><input type="radio" name="formatoEnvio" value="txt"><span>Texto</span></label>
+          </div>
+        </fieldset>
+        <p class="nota" style="margin:0">Nombre automático del archivo: <b id="nombreArchivo">InformeETAC.pdf</b></p>
+        <button id="btnWsp" type="button" class="btn btn-ok">Compartir por WhatsApp</button>
+      </div>
     </section>
 
     <!-- ============ DATOS ============ -->
@@ -492,12 +496,12 @@
 
   // ---------- Aviso visual ----------
   let tAlerta;
-  function mostrarAlerta(msg, tipo) {
+  function mostrarAlerta(msg, tipo, ms) {
     const el = $('alerta');
     el.textContent = msg;
     el.className = 'toast' + (tipo === 'error' ? ' error' : '');
     clearTimeout(tAlerta);
-    tAlerta = setTimeout(() => el.classList.add('oculto'), 4200);
+    tAlerta = setTimeout(() => el.classList.add('oculto'), ms || 4200);
   }
 
   // ---------- Tema oscuro / claro ----------
@@ -547,24 +551,6 @@
   ['efectivo', 'base', 'guardia', 'cuadrante'].forEach((id) => { $(id).addEventListener('input', guardarFijos); $(id).addEventListener('change', guardarFijos); });
   const fijos = () => leer(KEY_FIJOS, {});
 
-  // ---------- Tensión arterial: solo números y una barra "/" (botón para insertarla) ----------
-  $('ta').addEventListener('input', function () {
-    let v = this.value.replace(/[^0-9\/]/g, '');
-    const i = v.indexOf('/');
-    if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\//g, '');
-    if (v !== this.value) this.value = v;
-  });
-  $('btnBarra').addEventListener('click', function () {
-    const el = $('ta');
-    if (el.value.indexOf('/') === -1) {
-      const a = el.selectionStart == null ? el.value.length : el.selectionStart;
-      const b = el.selectionEnd == null ? a : el.selectionEnd;
-      el.value = (el.value.slice(0, a) + '/' + el.value.slice(b)).slice(0, 7);
-    }
-    el.focus();
-    try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
-  });
-
   // ---------- Traslado: muestra/oculta el campo de destino ----------
   function actualizarTraslado() {
     const si = document.querySelector('input[name="traslado"]:checked').value === 'Sí';
@@ -590,16 +576,20 @@
     ev.preventDefault();
 
     const efectivo = nombreMayus($('efectivo').value);
+    const sexoEl = document.querySelector('input[name="sexo"]:checked');
+    const sexo = sexoEl ? sexoEl.value : '';
     const base = $('base').value, guardia = $('guardia').value;
     const cuadrante = $('cuadrante').value.trim().toUpperCase(), hora = $('hora').value;
     const traslado = document.querySelector('input[name="traslado"]:checked').value;
     const destino = $('destino').value.trim();
 
     const faltan = [];
+    if (!efectivo) faltan.push('Apellido y nombre del efectivo');
     if (!base) faltan.push('Base de origen');
     if (!guardia) faltan.push('Guardia');
     if (!cuadrante) faltan.push('Cuadrante');
     if (!hora) faltan.push('Hora de atención');
+    if (!sexo) faltan.push('Sexo');
     if (traslado === 'Sí' && !destino) faltan.push('Destino / punto de extracción');
     if (faltan.length) { mostrarAlerta('Falta completar: ' + faltan.join(', '), 'error'); return; }
 
@@ -611,8 +601,7 @@
       id: id, creado: new Date().toISOString(),
       fecha: fechaISO(instante), hora: hora, atencionTs: instante.getTime(),
       efectivo: efectivo, base: base, guardia: guardia, cuadrante: cuadrante,
-      edad: $('edad').value, ta: $('ta').value.trim(),
-      fc: $('fc').value, fr: $('fr').value, sato2: $('sato2').value,
+      sexo: sexo, edad: $('edad').value,
       traslado: traslado, destino: traslado === 'Sí' ? destino : '',
       obs: $('obs').value.trim()
     };
@@ -621,7 +610,8 @@
     if (!guardar(KEY_REG, registros)) { registros.pop(); return; }
 
     // Se limpian solo los datos del paciente; efectivo, base, guardia y cuadrante quedan fijos
-    ['edad', 'ta', 'fc', 'fr', 'sato2', 'obs', 'destino'].forEach((c) => { $(c).value = ''; });
+    ['edad', 'obs', 'destino'].forEach((c) => { $(c).value = ''; });
+    document.querySelectorAll('input[name="sexo"]').forEach((r) => { r.checked = false; });
     document.querySelector('input[name="traslado"][value="No"]').checked = true;
     actualizarTraslado();
     $('hora').value = horaActual();
@@ -642,8 +632,7 @@
   // ---------- Exportar CSV (UTF-8 con BOM; separador ";" para Excel en español) ----------
   const COLUMNAS = [
     ['id','ID'], ['fecha','Fecha'], ['hora','Hora'], ['efectivo','Efectivo'], ['base','Base'], ['guardia','Guardia'],
-    ['cuadrante','Cuadrante'], ['edad','Edad'], ['ta','TA'], ['fc','FC (lpm)'], ['fr','FR (rpm)'],
-    ['sato2','SatO2 (%)'], ['traslado','Traslado'], ['destino','Destino / extracción'], ['obs','Observaciones']
+    ['cuadrante','Cuadrante'], ['sexo','Sexo'], ['edad','Edad'], ['traslado','Traslado'], ['destino','Destino / extracción'], ['obs','Observaciones']
   ];
   function celdaCsv(v) {
     let t = String(v == null ? '' : v).replace(/\r?\n/g, ' ');
@@ -713,39 +702,21 @@
       return [(varias ? fmtCorta(p[0]) + ' ' : '') + p[1] + ':00 hs', v];
     });
   }
-  function resumenValores(arr) {
-    if (!arr.length) return ['-', '-', '-', '0'];
-    const s = arr.reduce((a, b) => a + b, 0);
-    return [String(Math.round(s / arr.length)), String(Math.min.apply(null, arr)), String(Math.max.apply(null, arr)), String(arr.length)];
-  }
   function calcular(lista) {
     const n = lista.length;
     const t = lista.filter((r) => r.traslado === 'Sí').length;
     const edades = lista.map((r) => num(r.edad)).filter((x) => x !== null);
-    const sist = [], dias = [];
-    lista.forEach((r) => {
-      const m = /^(\d{2,3})\s*[\/-]\s*(\d{2,3})$/.exec((r.ta || '').trim());
-      if (m) { sist.push(+m[1]); dias.push(+m[2]); }
-    });
-    const fc = lista.map((r) => num(r.fc)).filter((x) => x !== null);
-    const fr = lista.map((r) => num(r.fr)).filter((x) => x !== null);
-    const sat = lista.map((r) => num(r.sato2)).filter((x) => x !== null);
     const tss = lista.map(tsReg).filter(Boolean);
+    const masc = lista.filter((r) => r.sexo === 'Masculino').length;
+    const fem = lista.filter((r) => r.sexo === 'Femenino').length;
     return {
-      n: n, t: t, nt: n - t,
+      n: n, t: t, nt: n - t, masc: masc, fem: fem, sinSexo: n - masc - fem,
       edadProm: edades.length ? Math.round(edades.reduce((a, b) => a + b, 0) / edades.length) : null,
       edadMin: edades.length ? Math.min.apply(null, edades) : null,
       edadMax: edades.length ? Math.max.apply(null, edades) : null,
       edades: edades,
       ini: tss.length ? new Date(Math.min.apply(null, tss)) : null,
-      fin: tss.length ? new Date(Math.max.apply(null, tss)) : null,
-      vit: { sist: sist, dias: dias, fc: fc, fr: fr, sat: sat },
-      fuera: [
-        ['Saturación de oxígeno menor a 92 %', sat.filter((v) => v < 92).length],
-        ['Frecuencia cardíaca mayor a 120 o menor a 50 lpm', fc.filter((v) => v > 120 || v < 50).length],
-        ['Frecuencia respiratoria mayor a 24 o menor a 10 rpm', fr.filter((v) => v > 24 || v < 10).length],
-        ['Tensión sistólica de 180 mmHg o más, o menor a 90 mmHg', sist.filter((v) => v >= 180 || v < 90).length]
-      ]
+      fin: tss.length ? new Date(Math.max.apply(null, tss)) : null
     };
   }
 
@@ -759,11 +730,11 @@
     return { lista: registros.filter((r) => tsReg(r) >= desde), nombre: h === 1 ? 'Última 1 hora' : 'Últimas ' + h + ' horas' };
   }
   const TABLA_REG = {
-    head: ['Fecha', 'Hora', 'Base', 'Guardia', 'Cuad.', 'Efectivo', 'Edad', 'TA', 'FC', 'FR', 'SatO2', 'Traslado', 'Destino', 'Observaciones'],
-    widths: [5.4, 3.2, 5.4, 4.2, 3.2, 8.4, 2.4, 3.4, 2.4, 2.4, 2.8, 3.2, 6.4, 11],
-    align: ['l', 'l', 'l', 'l', 'l', 'l', 'c', 'c', 'c', 'c', 'c', 'c', 'l', 'l']
+    head: ['Fecha', 'Hora', 'Base', 'Guardia', 'Cuad.', 'Efectivo', 'Sexo', 'Edad', 'Traslado', 'Destino', 'Observaciones'],
+    widths: [5.4, 3.2, 5.4, 4.2, 3.2, 8.4, 4.2, 2.4, 3.2, 6.4, 12],
+    align: ['l', 'l', 'l', 'l', 'l', 'l', 'l', 'c', 'c', 'l', 'l']
   };
-  const filaReg = (r) => [fmtFecha(r.fecha), r.hora, r.base, r.guardia, r.cuadrante, r.efectivo || '-', r.edad || '-', r.ta || '-', r.fc || '-', r.fr || '-', r.sato2 || '-', r.traslado, r.destino || '-', r.obs || '-'];
+  const filaReg = (r) => [fmtFecha(r.fecha), r.hora, r.base, r.guardia, r.cuadrante, r.efectivo || '-', r.sexo || '-', r.edad || '-', r.traslado, r.destino || '-', r.obs || '-'];
 
   function modeloPeriodo() {
     const d = datosPeriodo(), s = calcular(d.lista), f = fijos();
@@ -778,13 +749,14 @@
         { n: String(s.t), l: 'Trasladados', c: 'amber' },
         { n: String(s.nt), l: 'No trasladados', c: 'green' },
         { n: s.edadProm == null ? '-' : String(s.edadProm), l: 'Edad promedio (años)' }
-      ] }
+      ] },
+      { t: 'p', text: 'Por sexo: Masculino ' + s.masc + ' · Femenino ' + s.fem + (s.sinSexo ? ' · Sin dato ' + s.sinSexo : '') }
     ];
     const horas = porHora(d.lista);
     if (horas.length) { b.push({ t: 'h', text: 'Atenciones por hora' }); b.push({ t: 'bars', rows: horas }); }
     b.push({ t: 'h', text: 'Detalle de registros' });
     b.push({ t: 'table', small: true, head: TABLA_REG.head, widths: TABLA_REG.widths, align: TABLA_REG.align, rows: d.lista.map(filaReg) });
-    return { tipo: 'periodo', landscape: true, titulo: 'Informe parcial – ' + d.nombre, archivo: 'Informe_parcial_ETAC_' + marcaTiempo() + '.pdf', blocks: b, total: d.lista.length };
+    return { tipo: 'periodo', landscape: true, titulo: 'Informe parcial – ' + d.nombre, archivo: nombreAuto('pdf'), blocks: b, total: d.lista.length };
   }
 
   // ---------- Modelo: informe final del operativo ----------
@@ -798,6 +770,7 @@
     const periodo = s.ini && s.fin ? fmtFechaHora(s.ini) + ' a ' + fmtFechaHora(s.fin) : '-';
     let resumen = 'Durante el operativo se registraron ' + s.n + (s.n === 1 ? ' paciente atendido' : ' pacientes atendidos') +
       '. ' + s.t + ' (' + pct(s.t, s.n) + ') ' + (s.t === 1 ? 'requirió traslado' : 'requirieron traslado') + ' y ' + s.nt + ' (' + pct(s.nt, s.n) + ') ' + (s.nt === 1 ? 'fue atendido' : 'fueron atendidos') + ' en el lugar.';
+    if (s.masc + s.fem) resumen += ' Por sexo: ' + s.masc + ' masculino (' + pct(s.masc, s.n) + ') y ' + s.fem + ' femenino (' + pct(s.fem, s.n) + ').';
     if (s.edadProm != null) resumen += ' La edad promedio fue de ' + s.edadProm + ' años (mínima ' + s.edadMin + ', máxima ' + s.edadMax + ').';
     if (pico) resumen += ' La franja de mayor demanda fue ' + pico[0] + ', con ' + pico[1] + (pico[1] === 1 ? ' paciente.' : ' pacientes.');
     if (bases.length) resumen += ' La base con más atenciones registradas fue ' + bases[0].k + ' (' + bases[0].n + ').';
@@ -825,24 +798,22 @@
     b.push({ t: 'h', text: 'Distribución por cuadrante' });
     b.push({ t: 'table', head: cab('Cuadrante'), widths: an, align: al, rows: tg(agrupar(lista, (r) => r.cuadrante)) });
 
-    const fr = FRANJAS.map((x) => [x[0], s.edades.filter((e) => e >= x[1] && e <= x[2]).length]);
-    const sinEdad = s.n - s.edades.length;
-    if (sinEdad) fr.push(['Sin dato de edad', sinEdad]);
-    b.push({ t: 'h', text: 'Franjas etarias' });
-    b.push({ t: 'table', head: ['Franja', 'Pacientes', '% del total'], widths: [5, 2, 2], align: ['l', 'c', 'c'], rows: fr.map((x) => [x[0], String(x[1]), pct(x[1], s.n)]) });
+    // Sexo
+    const esM = (r) => r.sexo === 'Masculino', esF = (r) => r.sexo === 'Femenino';
+    const filaSexo = (k, l) => [k, String(l.length), String(l.filter((r) => r.traslado === 'Sí').length), pct(l.length, s.n)];
+    const sexRows = [filaSexo('Masculino', lista.filter(esM)), filaSexo('Femenino', lista.filter(esF))];
+    if (s.sinSexo) sexRows.push(filaSexo('Sin dato', lista.filter((r) => !esM(r) && !esF(r))));
+    b.push({ t: 'h', text: 'Distribución por sexo' });
+    b.push({ t: 'table', head: cab('Sexo'), widths: an, align: al, rows: sexRows });
 
-    const v = s.vit;
-    b.push({ t: 'h', text: 'Signos vitales (promedio, mínimo y máximo)' });
-    b.push({ t: 'table', head: ['Parámetro', 'Promedio', 'Mínimo', 'Máximo', 'Con dato'], widths: [5, 2, 2, 2, 2], align: ['l', 'c', 'c', 'c', 'c'], rows: [
-      ['Tensión arterial sistólica (mmHg)'].concat(resumenValores(v.sist)),
-      ['Tensión arterial diastólica (mmHg)'].concat(resumenValores(v.dias)),
-      ['Frecuencia cardíaca (lpm)'].concat(resumenValores(v.fc)),
-      ['Frecuencia respiratoria (rpm)'].concat(resumenValores(v.fr)),
-      ['Saturación de oxígeno (%)'].concat(resumenValores(v.sat))
-    ] });
-    b.push({ t: 'h', text: 'Valores fuera de rango de referencia' });
-    b.push({ t: 'table', head: ['Criterio', 'Pacientes'], widths: [7, 2], align: ['l', 'c'], rows: s.fuera.map((x) => [x[0], String(x[1])]) });
-    b.push({ t: 'p', text: 'Criterios orientativos sobre los datos cargados en campo; no constituyen un diagnóstico.', small: true });
+    // Franjas etarias, con el desglose por sexo
+    const filaEdad = (k, l) => [k, String(l.length), String(l.filter(esM).length), String(l.filter(esF).length), pct(l.length, s.n)];
+    const conEdad = lista.filter((r) => num(r.edad) !== null);
+    const fr = FRANJAS.map((x) => filaEdad(x[0], conEdad.filter((r) => { const e = num(r.edad); return e >= x[1] && e <= x[2]; })));
+    const sinEdad = lista.filter((r) => num(r.edad) === null);
+    if (sinEdad.length) fr.push(filaEdad('Sin dato de edad', sinEdad));
+    b.push({ t: 'h', text: 'Franjas etarias' });
+    b.push({ t: 'table', head: ['Franja', 'Pacientes', 'Masculino', 'Femenino', '% del total'], widths: [5, 2, 2, 2, 2], align: ['l', 'c', 'c', 'c', 'c'], rows: fr });
 
     const dest = agrupar(lista.filter((r) => r.traslado === 'Sí'), (r) => r.destino);
     if (dest.length) {
@@ -859,7 +830,7 @@
     b.push({ t: 'anexo', text: 'Anexo · detalle de registros (hoja horizontal en el PDF)', landscape: true });
     b.push({ t: 'h', text: 'Anexo: detalle de registros' });
     b.push({ t: 'table', small: true, head: TABLA_REG.head, widths: TABLA_REG.widths, align: TABLA_REG.align, rows: lista.map(filaReg) });
-    return { tipo: 'final', landscape: false, titulo: 'Informe final del operativo', archivo: 'Informe_final_ETAC_' + marcaTiempo() + '.pdf', blocks: b, total: lista.length };
+    return { tipo: 'final', landscape: false, titulo: 'Informe final del operativo', archivo: nombreAuto('pdf'), blocks: b, total: lista.length };
   }
 
   // ---------- Render HTML (vista previa) ----------
@@ -1080,6 +1051,183 @@
     return await doc.save();
   }
 
+  // ---------- Nombre automático: Cuadrante + Apellido y primer nombre (ej.: K1MaldonadoJorge.pdf) ----------
+  const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const FORMATOS = {
+    pdf:  { ext: 'pdf',  mime: 'application/pdf' },
+    xlsx: { ext: 'xlsx', mime: MIME_XLSX },
+    txt:  { ext: 'txt',  mime: 'text/plain' }
+  };
+  const sinAcentos = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const capital = (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  const actual = () => ({ efectivo: nombreMayus($('efectivo').value), base: $('base').value, guardia: $('guardia').value, cuadrante: $('cuadrante').value.trim().toUpperCase() });
+
+  function nombreAuto(ext) {
+    const a = actual();
+    const cuad = sinAcentos(a.cuadrante).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const pers = sinAcentos(a.efectivo).split(' ').map((w) => w.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean).slice(0, 2).map(capital).join('');
+    return ((cuad + pers) || 'InformeETAC') + '.' + ext;
+  }
+  function formatoElegido() { return document.querySelector('input[name="formatoEnvio"]:checked').value; }
+  function actualizarNombre() { $('nombreArchivo').textContent = nombreAuto(FORMATOS[formatoElegido()].ext); }
+  ['efectivo', 'cuadrante'].forEach((id) => $(id).addEventListener('input', actualizarNombre));
+  document.querySelectorAll('input[name="formatoEnvio"]').forEach((r) => r.addEventListener('change', actualizarNombre));
+
+  // ---------- Excel (.xlsx) generado en el propio dispositivo, sin librerías ----------
+  const CRC_T = (function () {
+    const tb = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); tb[n] = c >>> 0; }
+    return tb;
+  })();
+  function crc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+
+  // ZIP sin compresión (método "store"): alcanza para armar un .xlsx válido
+  function zipStore(archivos) {
+    const enc = new TextEncoder(), d = new Date();
+    const dosT = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosD = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const partes = [], central = []; let offset = 0;
+    archivos.forEach((f) => {
+      const nom = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data), sz = data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dosT, true); lh.setUint16(12, dosD, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true);
+      lh.setUint16(26, nom.length, true); lh.setUint16(28, 0, true);
+      partes.push(new Uint8Array(lh.buffer), nom, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dosT, true); ch.setUint16(14, dosD, true); ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true);
+      ch.setUint16(28, nom.length, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), nom);
+      offset += 30 + nom.length + sz;
+    });
+    let csize = 0; central.forEach((p) => { csize += p.length; });
+    const eo = new DataView(new ArrayBuffer(22));
+    eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, archivos.length, true); eo.setUint16(10, archivos.length, true);
+    eo.setUint32(12, csize, true); eo.setUint32(16, offset, true);
+    return new Blob(partes.concat(central, [new Uint8Array(eo.buffer)]), { type: MIME_XLSX });
+  }
+  function colLetra(i) { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+  const xmlEsc = (t2) => String(t2 == null ? '' : t2).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // opts: cabecera (primera fila con estilo y filtro), estilos (estilo por columna), primera (hoja activa)
+  function hojaXml(filas, anchos, opts) {
+    let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"' + (opts.primera ? ' tabSelected="1"' : '') + '>' +
+      (opts.cabecera ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/>' : '') +
+      '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>' +
+      anchos.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>';
+    filas.forEach((fila, ri) => {
+      x += '<row r="' + (ri + 1) + '">';
+      fila.forEach((v, ci) => {
+        if (v === null || v === undefined || v === '') return;
+        const ref = colLetra(ci) + (ri + 1);
+        const st = (opts.cabecera && ri === 0) ? ' s="1"' : (opts.estilos && opts.estilos[ci] ? ' s="' + opts.estilos[ci] + '"' : '');
+        if (typeof v === 'number') x += '<c r="' + ref + '"' + st + '><v>' + v + '</v></c>';
+        else x += '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + '</t></is></c>';
+      });
+      x += '</row>';
+    });
+    x += '</sheetData>' + (opts.cabecera && filas.length > 1 ? '<autoFilter ref="A1:' + colLetra(anchos.length - 1) + filas.length + '"/>' : '') + '</worksheet>';
+    return x;
+  }
+
+  function construirXlsx(lista, titulo) {
+    const s = calcular(lista), a = actual();
+    const filas = [COLUMNAS.map((c) => c[1])];
+    lista.forEach((r) => filas.push(COLUMNAS.map((c) => {
+      const v = r[c[0]];
+      if (c[0] === 'edad') { const e = num(v); return e === null ? '' : e; }
+      if (c[0] === 'fecha') return fmtFecha(v);
+      return v == null ? '' : String(v);
+    })));
+    const anchos = [15, 11, 8, 26, 18, 11, 11, 11, 7, 10, 28, 50];
+    const estilos = []; estilos[11] = 2;                                     // observaciones con ajuste de texto
+    const resumen = [
+      ['Informe', titulo], ['Emitido', fmtFechaHora(new Date())], ['Efectivo', a.efectivo || '-'], ['Base', a.base || '-'], ['Guardia', a.guardia || '-'], ['Cuadrante', a.cuadrante || '-'],
+      [], ['Pacientes atendidos', s.n], ['Trasladados', s.t], ['No trasladados', s.nt], ['Masculino', s.masc], ['Femenino', s.fem], ['Sin dato de sexo', s.sinSexo],
+      ['Edad promedio (años)', s.edadProm == null ? '-' : s.edadProm], [], ['Autoría', AUTORIA]
+    ];
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    const PK = 'http://schemas.openxmlformats.org/package/2006/relationships';
+    const estiloResumen = [3, 0];
+    return zipStore([
+      { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+      { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="' + PK + '"><Relationship Id="rId1" Type="' + RS + '/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="' + NS + '" xmlns:r="' + RS + '"><sheets><sheet name="Registros" sheetId="1" r:id="rId1"/><sheet name="Resumen" sheetId="2" r:id="rId2"/></sheets></workbook>' },
+      { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="' + PK + '"><Relationship Id="rId1" Type="' + RS + '/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="' + RS + '/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="' + RS + '/styles" Target="styles.xml"/></Relationships>' },
+      { name: 'xl/styles.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="' + NS + '"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B1F3F"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>' },
+      { name: 'xl/worksheets/sheet1.xml', data: hojaXml(filas, anchos, { cabecera: true, estilos: estilos, primera: true }) },
+      { name: 'xl/worksheets/sheet2.xml', data: hojaXml(resumen, [26, 60], { estilos: estiloResumen }) }
+    ]);
+  }
+
+  // ---------- Archivo de texto (.txt) ----------
+  function construirTxt(lista, titulo) {
+    const s = calcular(lista), a = actual(), L = [];
+    L.push('ETAC - EQUIPO TÉCNICO DE ACCIÓN ANTE CATÁSTROFES');
+    L.push('Operativo Papa · Córdoba 2026');
+    L.push('INFORME: ' + titulo);
+    L.push('Emitido: ' + fmtFechaHora(new Date()));
+    if (a.efectivo) L.push('Efectivo: ' + a.efectivo);
+    const ub = [a.base, a.guardia, a.cuadrante ? 'Cuadrante ' + a.cuadrante : ''].filter(Boolean).join(' · ');
+    if (ub) L.push('Base · guardia · cuadrante: ' + ub);
+    L.push('', 'RESUMEN');
+    L.push('Pacientes atendidos: ' + s.n);
+    L.push('Trasladados: ' + s.t + ' (' + pct(s.t, s.n) + ')');
+    L.push('No trasladados: ' + s.nt);
+    L.push('Masculino: ' + s.masc + ' · Femenino: ' + s.fem + (s.sinSexo ? ' · Sin dato: ' + s.sinSexo : ''));
+    if (s.edadProm != null) L.push('Edad promedio: ' + s.edadProm + ' años (mín. ' + s.edadMin + ', máx. ' + s.edadMax + ')');
+    L.push('', 'REGISTROS');
+    lista.forEach((r, i) => {
+      L.push((i + 1) + '. ' + fmtFecha(r.fecha) + ' ' + r.hora + ' | Cuad. ' + r.cuadrante + ' | ' + (r.sexo || 'Sin dato') + ' | ' + (r.edad ? r.edad + ' años' : 'edad s/d') +
+        ' | Traslado: ' + r.traslado + (r.destino ? ' (' + r.destino + ')' : ''));
+      if (r.obs) L.push('   Obs: ' + r.obs.replace(/\s+/g, ' '));
+    });
+    L.push('', AUTORIA + ' · © 2026');
+    return L.join('\r\n');
+  }
+
+  // ---------- Compartir: menú del celular (WhatsApp, Gmail…) o descarga como respaldo ----------
+  async function compartirArchivo(blob, nombre, mime, titulo) {
+    const archivo = new File([blob], nombre, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      try { await navigator.share({ files: [archivo], title: titulo, text: 'ETAC · Operativo Papa Córdoba 2026 – ' + titulo }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }              // el usuario cerró el menú
+    }
+    descargarBlob(blob, nombre);
+    mostrarAlerta('Este equipo no permite enviar el archivo directo. Se descargó ' + nombre + ': abrí WhatsApp y adjuntalo desde Descargas.', 'ok', 9000);
+  }
+
+  async function bytesPdf(m) {
+    if (!(window.PDFLib && window.PDFLib.PDFDocument)) throw new Error('Librería de PDF no disponible');
+    return await crearPdf(m);
+  }
+
+  // Envío por WhatsApp: PDF = informe elegido; Excel / Texto = registros del mismo alcance
+  $('btnWsp').addEventListener('click', async function () {
+    const btn = this; btn.disabled = true;
+    try {
+      if (!registros.length) { mostrarAlerta('Todavía no hay registros para enviar.', 'error'); return; }
+      const fmt = formatoElegido(), F = FORMATOS[fmt], nombre = nombreAuto(F.ext);
+      const final = document.querySelector('input[name="tipoInforme"]:checked').value === 'final';
+      let blob, titulo;
+      if (fmt === 'pdf') {
+        const m = final ? modeloFinal() : modeloPeriodo();
+        if (!m.total) { mostrarAlerta('No hay registros en el período elegido. Probá con un período más largo.', 'error'); return; }
+        modeloActual = m; titulo = m.titulo;
+        blob = new Blob([await bytesPdf(m)], { type: F.mime });
+      } else {
+        const d = final ? { lista: registros.slice(), nombre: 'Informe final del operativo' } : datosPeriodo();
+        if (!d.lista.length) { mostrarAlerta('No hay registros en el período elegido. Probá con un período más largo.', 'error'); return; }
+        titulo = d.nombre;
+        blob = fmt === 'xlsx' ? construirXlsx(d.lista, d.nombre) : new Blob([construirTxt(d.lista, d.nombre)], { type: 'text/plain;charset=utf-8' });
+      }
+      await compartirArchivo(blob, nombre, F.mime, titulo);
+    } catch (e) { mostrarAlerta('No se pudo preparar el archivo: ' + e.message, 'error'); }
+    finally { btn.disabled = false; }
+  });
+
   // ---------- Vista previa: abrir, descargar y compartir ----------
   let modeloActual = null;
 
@@ -1101,14 +1249,10 @@
   $('vCerrar').addEventListener('click', cerrarVista);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { cerrarVista(); cerrarModal(); } });
 
-  async function bytesPdf() {
-    if (!(window.PDFLib && window.PDFLib.PDFDocument)) throw new Error('Librería de PDF no disponible');
-    return await crearPdf(modeloActual);
-  }
   $('vPdf').addEventListener('click', async function () {
     const btn = this; btn.disabled = true;
     try {
-      const bytes = await bytesPdf();
+      const bytes = await bytesPdf(modeloActual);
       descargarBlob(new Blob([bytes], { type: 'application/pdf' }), modeloActual.archivo);
       mostrarAlerta('PDF generado: ' + modeloActual.archivo, 'ok');
     } catch (e) { mostrarAlerta('No se pudo generar el PDF: ' + e.message, 'error'); }
@@ -1117,15 +1261,8 @@
   $('vCompartir').addEventListener('click', async function () {
     const btn = this; btn.disabled = true;
     try {
-      const bytes = await bytesPdf();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const archivo = new File([blob], modeloActual.archivo, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        try { await navigator.share({ files: [archivo], title: modeloActual.titulo, text: modeloActual.titulo + ' – ETAC · Operativo Papa Córdoba 2026' }); btn.disabled = false; return; }
-        catch (e) { if (e && e.name === 'AbortError') { btn.disabled = false; return; } }
-      }
-      descargarBlob(blob, modeloActual.archivo);            // sin menú de compartir: se descarga para adjuntarlo a mano
-      mostrarAlerta('Este equipo no permite compartir directo: el PDF se descargó, adjuntalo en WhatsApp o Email.', 'ok');
+      const bytes = await bytesPdf(modeloActual);
+      await compartirArchivo(new Blob([bytes], { type: 'application/pdf' }), modeloActual.archivo, 'application/pdf', modeloActual.titulo);
     } catch (e) { mostrarAlerta('No se pudo preparar el PDF: ' + e.message, 'error'); }
     btn.disabled = false;
   });
@@ -1148,7 +1285,7 @@
     if (inf.novedades) $('novedades').value = inf.novedades;
     restaurarFijos();
     $('hora').value = horaActual();              // hora actual del dispositivo, editable
-    actualizarTraslado(); actualizarTipoInforme(); actualizarRed(); pintarResumen();
+    actualizarTraslado(); actualizarTipoInforme(); actualizarRed(); pintarResumen(); actualizarNombre();
   })();
 })();
 </script>
