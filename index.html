@@ -224,6 +224,7 @@
   <!-- Barra fija: conexión, contador de pacientes, modo claro/oscuro -->
   <div class="barra">
     <div id="estadoRed" class="estado"><i></i><span id="estadoTxt">En línea</span></div>
+    <i id="mesaChip" title="Mesa de Comando" style="width:10px;height:10px;border-radius:50%;background:var(--mut);flex:none;margin-right:4px" aria-hidden="true"></i>
     <div class="contador" aria-live="polite"><b id="contador">0</b><span>pacientes</span></div>
     <button id="btnTema" type="button" class="icono" aria-label="Cambiar entre modo oscuro y claro" title="Modo oscuro / claro">
       <svg class="luna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -383,6 +384,18 @@
         <p class="nota" style="margin:0">Nombre automático del archivo: <b id="nombreArchivo">InformeETAC.pdf</b></p>
         <button id="btnWsp" type="button" class="btn btn-ok">Compartir por WhatsApp</button>
       </div>
+    </section>
+
+    <!-- ============ MESA DE COMANDO (envío automático) ============ -->
+    <section class="tarjeta" id="secMesa">
+      <h2>Envío a la Mesa de Comando</h2>
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <i id="mesaDot" style="width:12px;height:12px;border-radius:50%;background:var(--mut);flex:none;margin-top:5px"></i>
+        <div style="min-width:0"><b id="mesaEstado">No conectado</b><div id="mesaDetalle" class="nota" style="margin:2px 0 0;color:var(--mut)"></div><div id="mesaUsuario" class="nota" style="margin:2px 0 0;color:var(--mut)"></div></div>
+      </div>
+      <button id="mesaConectar" type="button" class="btn btn-p">Conectar con la Mesa de Comando</button>
+      <button id="mesaEnviar" type="button" class="btn btn-s oculto">Enviar ahora</button>
+      <button id="mesaSalir" type="button" class="btn btn-s oculto">Desconectar este teléfono</button>
     </section>
 
     <!-- ============ DATOS ============ -->
@@ -1290,5 +1303,192 @@
   })();
 })();
 </script>
+
+  <!-- ============ ENVÍO AUTOMÁTICO A LA MESA DE COMANDO (agregado; no reemplaza nada) ============ -->
+  <div id="modalMesa" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="mesaTit">
+    <div class="caja">
+      <h3 id="mesaTit" style="color:var(--acc)">Conectar con la Mesa de Comando</h3>
+      <p>Ingresá con el usuario que te dio el responsable. Se hace una sola vez en este teléfono.</p>
+      <div><label class="sub" for="mesaEmail">Email</label><input id="mesaEmail" type="email" class="campo" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+      <div><label class="sub" for="mesaClave">Contraseña</label><input id="mesaClave" type="password" class="campo" autocomplete="current-password"></div>
+      <label class="sub" id="mesaPrevWrap" style="display:flex;gap:8px;align-items:center"><input id="mesaPrev" type="checkbox" checked> <span id="mesaPrevTxt">Enviar también los registros que ya están en este teléfono</span></label>
+      <p id="mesaErr" style="color:var(--warn);margin:0"></p>
+      <div class="g2">
+        <button id="mesaCancelar" type="button" class="btn btn-s">Cancelar</button>
+        <button id="mesaIngresar" type="button" class="btn btn-p">Ingresar</button>
+      </div>
+    </div>
+  </div>
+  <script>
+  /* =====================================================================
+     ETAC – Envío automático a la Mesa de Comando (Supabase) | © Maldonado Jorge Matias
+     - Funciona aparte del resto de la app: no cambia cómo se registra,
+       ni los informes, ni Compartir por WhatsApp, ni el CSV.
+     - Cada paciente nuevo entra en una "bandeja de salida" guardada en el
+       teléfono y se envía apenas hay internet. Si no hay señal, espera.
+     - "Limpiar datos" no borra la bandeja: lo pendiente se envía igual.
+     - El usuario de campo sólo puede AGREGAR datos (permiso "Carga"):
+       no puede modificar ni borrar nada en la Mesa de Comando.
+     ===================================================================== */
+  (function () {
+    'use strict';
+    const CONFIG_NUBE = {
+      url: 'https://kxcdmhghewaivllegipc.supabase.co',
+      clave: 'sb_publishable__vlQvbIXhjIEMFrii0YJUQ_IRogabVr',
+      subirObservaciones: false     // igual que en la Mesa de Comando: las observaciones quedan sólo en el teléfono
+    };
+    const KEY_REG = 'etac_registros_v1';
+    const KEY_SES = 'etac_mesa_sesion_v1', KEY_OUT = 'etac_mesa_bandeja_v1', KEY_VISTOS = 'etac_mesa_vistos_v1', KEY_DISP = 'etac_mesa_disp_v1';
+    const $ = (id) => document.getElementById(id);
+    const leer = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+    const escribir = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+    const dd = (n) => String(n).padStart(2, '0');
+    let disp = leer(KEY_DISP, ''); if (!disp) { disp = 'campo-' + Math.random().toString(36).slice(2, 10); escribir(KEY_DISP, disp); }
+    let ses = leer(KEY_SES, null), enviando = false, ultimoError = '', ultimoEnvio = 0;
+
+    // ---------- Bandeja de salida ----------
+    function aFila(r) {
+      const f = String(r.fecha || '');
+      const fecha = /^\d{4}-\d{2}-\d{2}$/.test(f) ? f.split('-').reverse().join('/') : f;
+      const e = parseInt(r.edad, 10);
+      return {
+        uid: 'campo-' + r.id, id: String(r.id), fecha: fecha, hora: r.hora || '', efectivo: r.efectivo || '', base: r.base || '', guardia: r.guardia || '',
+        cuadrante: r.cuadrante || '', sexo: r.sexo || '', edad: isNaN(e) ? null : e, traslado: r.traslado || 'No', destino: r.destino || '',
+        obs: CONFIG_NUBE.subirObservaciones ? (r.obs || null) : null, crudo: null,
+        archivo_origen: 'App de campo (envío automático)', importado: Date.now(), revisar: [], disp: disp, borrado: false
+      };
+    }
+    /** Pasa a la bandeja los registros del teléfono que todavía no se vieron. */
+    function revisarNuevos(incluirViejos) {
+      const regs = leer(KEY_REG, []);
+      let vistos = leer(KEY_VISTOS, null);
+      const out = leer(KEY_OUT, []);
+      if (vistos === null) {                       // primera vez: se decide al conectar si van los anteriores
+        if (!incluirViejos) { escribir(KEY_VISTOS, regs.map((r) => r.id)); return; }
+        vistos = [];
+      }
+      const set = new Set(vistos), enOut = new Set(out.map((f) => f.uid));
+      let n = 0;
+      regs.forEach((r) => { if (r && r.id != null && !set.has(r.id)) { set.add(r.id); if (!enOut.has('campo-' + r.id)) { out.push(aFila(r)); n++; } } });
+      if (n || vistos.length !== set.size) { escribir(KEY_OUT, out); escribir(KEY_VISTOS, [...set].slice(-20000)); }
+      pintar();
+      if (n) enviar();
+    }
+
+    // ---------- Sesión ----------
+    async function auth(tipo, cuerpo) {
+      const res = await fetch(CONFIG_NUBE.url + '/auth/v1/token?grant_type=' + tipo, {
+        method: 'POST', headers: { apikey: CONFIG_NUBE.clave, 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo)
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { const e = new Error(j.error_description || j.msg || j.message || ('Error ' + res.status)); e.status = res.status; throw e; }
+      ses = { access: j.access_token, refresh: j.refresh_token, vence: Date.now() + (j.expires_in || 3600) * 1000, email: (j.user && j.user.email) || (ses && ses.email) || cuerpo.email || '' };
+      escribir(KEY_SES, ses);
+    }
+    async function token() {
+      if (!ses) throw Object.assign(new Error('sin sesión'), { sinSesion: true });
+      if (Date.now() > ses.vence - 120000) {
+        try { await auth('refresh_token', { refresh_token: ses.refresh }); }
+        catch (e) { if (e.status === 400 || e.status === 401) { ses = null; localStorage.removeItem(KEY_SES); throw Object.assign(new Error('La sesión venció: volvé a conectar.'), { sinSesion: true }); } throw e; }
+      }
+      return ses.access;
+    }
+
+    // ---------- Envío ----------
+    async function enviar() {
+      if (enviando || !ses) { pintar(); return; }
+      let out = leer(KEY_OUT, []);
+      if (!out.length) { pintar(); return; }
+      if (navigator.onLine === false) { pintar(); return; }
+      enviando = true; pintar();
+      try {
+        for (let i = 0; i < out.length; i += 200) {
+          const lote = out.slice(i, i + 200);
+          let tk = await token();
+          const post = (t) => fetch(CONFIG_NUBE.url + '/rest/v1/registros?on_conflict=uid', {
+            method: 'POST',
+            headers: { apikey: CONFIG_NUBE.clave, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+            body: JSON.stringify(lote)
+          });
+          let res = await post(tk);
+          if (res.status === 401) { ses.vence = 0; tk = await token(); res = await post(tk); }
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            const m = j.message || ('Error ' + res.status);
+            throw new Error(/row-level security|permission denied|42501/i.test(m + j.code) ? 'Tu usuario no tiene permiso para cargar datos. Avisale al responsable.' : m);
+          }
+          const enviados = new Set(lote.map((f) => f.uid));
+          out = leer(KEY_OUT, []).filter((f) => !enviados.has(f.uid));
+          escribir(KEY_OUT, out);
+        }
+        ultimoError = ''; ultimoEnvio = Date.now();
+      } catch (e) {
+        ultimoError = e.sinSesion ? e.message : (/fetch|network|load failed/i.test(e.message) ? 'Sin conexión con la Mesa. Se reintenta solo.' : e.message);
+        console.warn('Envío a la Mesa:', e);
+      } finally { enviando = false; pintar(); }
+    }
+
+    // ---------- Pantalla ----------
+    function pintar() {
+      const n = leer(KEY_OUT, []).length;
+      const dot = $('mesaDot'), txt = $('mesaEstado'), det = $('mesaDetalle');
+      if (!dot) return;
+      let color = 'var(--ok)', t, d = '';
+      if (!ses) { color = 'var(--mut)'; t = 'No conectado'; d = 'Los datos se guardan en este teléfono y se comparten por WhatsApp como siempre. Conectate para que lleguen solos a la Mesa.'; }
+      else if (enviando) { color = 'var(--acc)'; t = 'Enviando ' + n + '…'; }
+      else if (ultimoError) { color = 'var(--warn)'; t = n ? n + ' por enviar' : 'Atención'; d = ultimoError; }
+      else if (n) { color = 'var(--warn)'; t = n + ' por enviar'; d = navigator.onLine === false ? 'Sin internet: se envían solos cuando vuelva la señal.' : 'Se envían en unos segundos.'; }
+      else { t = 'Todo enviado a la Mesa'; d = ultimoEnvio ? 'Último envío: ' + dd(new Date(ultimoEnvio).getHours()) + ':' + dd(new Date(ultimoEnvio).getMinutes()) : 'Cada paciente nuevo se envía automáticamente.'; }
+      dot.style.background = color; txt.textContent = t; det.textContent = d;
+      $('mesaUsuario').textContent = ses ? 'Conectado como ' + ses.email : '';
+      $('mesaConectar').classList.toggle('oculto', !!ses);
+      $('mesaSalir').classList.toggle('oculto', !ses);
+      $('mesaEnviar').classList.toggle('oculto', !ses || !n);
+      const chip = $('mesaChip');
+      if (chip) { chip.style.background = color; chip.title = 'Mesa de Comando: ' + t; }
+    }
+    function abrirLogin() {
+      const regs = leer(KEY_REG, []), primera = leer(KEY_VISTOS, null) === null;
+      $('mesaPrevWrap').classList.toggle('oculto', !primera || !regs.length);
+      $('mesaPrevTxt').textContent = 'Enviar también los ' + regs.length + ' registro(s) que ya están en este teléfono';
+      $('mesaErr').textContent = ''; $('modalMesa').classList.remove('oculto'); setTimeout(() => $('mesaEmail').focus(), 50);
+    }
+    async function ingresar() {
+      const email = $('mesaEmail').value.trim(), clave = $('mesaClave').value;
+      if (!email || !clave) { $('mesaErr').textContent = 'Completá email y contraseña.'; return; }
+      $('mesaIngresar').disabled = true; $('mesaErr').textContent = '';
+      try {
+        await auth('password', { email: email, password: clave });
+        $('mesaClave').value = ''; $('modalMesa').classList.add('oculto');
+        revisarNuevos(leer(KEY_VISTOS, null) === null ? $('mesaPrev').checked : true);
+        ultimoError = ''; enviar();
+      } catch (e) {
+        const m = String(e.message || e);
+        $('mesaErr').textContent = /invalid login|credentials/i.test(m) ? 'Email o contraseña incorrectos.' : /api key/i.test(m) ? 'Clave de la Mesa no válida (revisar configuración).' : /fetch|network|load failed/i.test(m) ? 'Sin internet. Probá de nuevo cuando haya señal.' : 'No se pudo ingresar: ' + m;
+      } finally { $('mesaIngresar').disabled = false; }
+    }
+
+    // ---------- Eventos ----------
+    $('mesaConectar').addEventListener('click', abrirLogin);
+    $('mesaCancelar').addEventListener('click', () => $('modalMesa').classList.add('oculto'));
+    $('mesaIngresar').addEventListener('click', ingresar);
+    $('mesaClave').addEventListener('keydown', (e) => { if (e.key === 'Enter') ingresar(); });
+    $('mesaEnviar').addEventListener('click', () => { ultimoError = ''; enviar(); });
+    $('mesaSalir').addEventListener('click', () => {
+      const n = leer(KEY_OUT, []).length;
+      if (!confirm('¿Desconectar este teléfono de la Mesa de Comando?' + (n ? ' Hay ' + n + ' registro(s) sin enviar: quedan guardados y se envían cuando vuelvas a conectar.' : ''))) return;
+      ses = null; localStorage.removeItem(KEY_SES); pintar();
+    });
+    // Después de registrar un paciente (el formulario original ya lo guardó)
+    $('formulario').addEventListener('submit', () => setTimeout(() => { if (ses) revisarNuevos(true); }, 50));
+    window.addEventListener('online', () => { if (ses) enviar(); else pintar(); });
+    window.addEventListener('offline', pintar);
+    window.addEventListener('storage', (e) => { if (e.key === KEY_REG && ses) revisarNuevos(true); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && ses) revisarNuevos(true); });
+    setInterval(() => { if (ses) { revisarNuevos(true); if (leer(KEY_OUT, []).length) enviar(); } }, 30000);
+    if (ses) revisarNuevos(true); else pintar();
+  })();
+  </script>
+
 </body>
 </html>
