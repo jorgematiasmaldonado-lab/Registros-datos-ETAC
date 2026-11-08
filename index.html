@@ -211,6 +211,8 @@
     .d-anexo { margin: 26px 0 0; padding: 8px 20px; background: #eef3fb; border-top: 2px dashed #9db3d3; font-size: 12px; color: #55688a; text-align: center; }
     @media (max-width: 560px) { .d-kpis { grid-template-columns: repeat(2, 1fr); } .d-band img { height: 34px; } .g2.informe { grid-template-columns: 1fr; } }
   </style>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 </head>
 
 <body>
@@ -1490,5 +1492,11 @@
   })();
   </script>
 
+<script>
+  /* Funcionamiento sin internet: guarda una copia de la app en el teléfono (sólo cuando está publicada en GitHub Pages) */
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('./sw.js').catch(function (e) { console.warn('Sin modo offline:', e); }); });
+  }
+</script>
 </body>
 </html>
